@@ -362,6 +362,14 @@ func findContentType(fs FileSystem, ls LockSystem, name string, fi os.FileInfo) 
 		return "", err
 	}
 	defer f.Close()
+	if fct, ok := f.(interface {
+		ContentType() string
+	}); ok {
+		ctype := fct.ContentType()
+		if ctype != "" {
+			return ctype, nil
+		}
+	}
 	// This implementation is based on serveContent's code in the standard net/http package.
 	ctype := mime.TypeByExtension(filepath.Ext(name))
 	if ctype != "" {
