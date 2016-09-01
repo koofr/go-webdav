@@ -651,6 +651,23 @@ func copyProps(dst, src File) error {
 //
 // See section 9.8.5 for when various HTTP status codes apply.
 func copyFiles(fs FileSystem, src, dst string, overwrite bool, depth int, recursion int) (status int, err error) {
+	if fsCpy, ok := fs.(interface {
+		CopyAll(string, string) error
+	}); ok {
+		err := fsCpy.CopyAll(src, dst)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return http.StatusNotFound, err
+			} else if os.IsExist(err) {
+				return http.StatusPreconditionFailed, os.ErrExist
+			}
+
+			return http.StatusInternalServerError, err
+		}
+
+		return http.StatusCreated, nil
+	}
+
 	if recursion == 1000 {
 		return http.StatusInternalServerError, errRecursionTooDeep
 	}
