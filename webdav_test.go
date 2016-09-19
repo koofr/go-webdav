@@ -204,46 +204,60 @@ func TestPrefix(t *testing.T) {
 
 func TestFilenameEscape(t *testing.T) {
 	re := regexp.MustCompile(`<D:href>([^<]*)</D:href>`)
-	do := func(method, urlStr string) (string, error) {
+	displayNameRe := regexp.MustCompile(`<D:displayname>([^<]*)</D:displayname>`)
+	do := func(method, urlStr string) (string, string, error) {
 		req, err := http.NewRequest(method, urlStr, nil)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		defer res.Body.Close()
 
 		b, err := ioutil.ReadAll(res.Body)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		m := re.FindStringSubmatch(string(b))
 		if len(m) != 2 {
-			return "", errors.New("D:href not found")
+			return "", "", errors.New("D:href not found")
+		}
+		dnm := displayNameRe.FindStringSubmatch(string(b))
+		if len(m) != 2 {
+			return "", "", errors.New("D:displayname not found")
 		}
 
-		return m[1], nil
+		return m[1], dnm[1], nil
 	}
 
 	testCases := []struct {
-		name, want string
+		name, want, wantDisplayName string
 	}{{
-		name: `/foo%bar`,
-		want: `/foo%25bar`,
+		name:            `/foo%bar`,
+		want:            `/foo%25bar`,
+		wantDisplayName: `foo%bar`,
 	}, {
-		name: `/こんにちわ世界`,
-		want: `/%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%82%8F%E4%B8%96%E7%95%8C`,
+		name:            `/こんにちわ世界`,
+		want:            `/%E3%81%93%E3%82%93%E3%81%AB%E3%81%A1%E3%82%8F%E4%B8%96%E7%95%8C`,
+		wantDisplayName: `こんにちわ世界`,
 	}, {
-		name: `/Program Files/`,
-		want: `/Program%20Files`,
+		name:            `/Program Files/`,
+		want:            `/Program%20Files`,
+		wantDisplayName: `Program Files`,
 	}, {
-		name: `/go+lang`,
-		want: `/go+lang`,
+		name:            `/go+lang`,
+		want:            `/go+lang`,
+		wantDisplayName: `go+lang`,
 	}, {
-		name: `/go&lang`,
-		want: `/go&amp;lang`,
+		name:            `/go&lang`,
+		want:            `/go&amp;lang`,
+		wantDisplayName: `go&amp;lang`,
+	}, {
+		name:            `/go<lang`,
+		want:            `/go%3Clang`,
+		wantDisplayName: `go&lt;lang`,
 	}}
 	fs := NewMemFS()
 	for _, tc := range testCases {
@@ -273,13 +287,16 @@ func TestFilenameEscape(t *testing.T) {
 
 	for _, tc := range testCases {
 		u.Path = tc.name
-		got, err := do("PROPFIND", u.String())
+		got, gotDisplayName, err := do("PROPFIND", u.String())
 		if err != nil {
 			t.Errorf("name=%q: PROPFIND: %v", tc.name, err)
 			continue
 		}
 		if got != tc.want {
 			t.Errorf("name=%q: got %q, want %q", tc.name, got, tc.want)
+		}
+		if gotDisplayName != tc.wantDisplayName {
+			t.Errorf("displayname name=%q: got %q, want %q", tc.name, gotDisplayName, tc.wantDisplayName)
 		}
 	}
 }

@@ -114,6 +114,23 @@ func TestReadLockInfo(t *testing.T) {
 			},
 		},
 		0,
+	}, {
+		"good: < & test",
+		"" +
+			"<D:lockinfo xmlns:D='DAV:'>\n" +
+			"  <D:lockscope><D:exclusive/></D:lockscope>\n" +
+			"  <D:locktype><D:write/></D:locktype>\n" +
+			"  <D:owner>%3C%20%26%20test</D:owner>\n" +
+			"</D:lockinfo>",
+		lockInfo{
+			XMLName:   ixml.Name{Space: "DAV:", Local: "lockinfo"},
+			Exclusive: new(struct{}),
+			Write:     new(struct{}),
+			Owner: owner{
+				InnerXML: "%3C%20%26%20test",
+			},
+		},
+		0,
 	}}
 
 	for _, tc := range testCases {
