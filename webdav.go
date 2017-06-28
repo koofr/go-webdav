@@ -377,7 +377,7 @@ func (h *Handler) handleCopyMove(w http.ResponseWriter, r *http.Request) (status
 			return http.StatusBadRequest, errInvalidDepth
 		}
 	}
-	return moveFiles(h.FileSystem, src, dst, r.Header.Get("Overwrite") == "T")
+	return moveFiles(h.FileSystem, src, dst, r.Header.Get("Overwrite") != "F")
 }
 
 func (h *Handler) handleLock(w http.ResponseWriter, r *http.Request) (retStatus int, retErr error) {
