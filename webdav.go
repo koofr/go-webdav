@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -261,6 +262,9 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) (status int,
 
 	f, err := h.FileSystem.OpenFile(reqPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
+		if e, ok := err.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+			return http.StatusInsufficientStorage, err
+		}
 		return http.StatusNotFound, err
 	}
 	_, copyErr := io.Copy(f, r.Body)
@@ -268,12 +272,21 @@ func (h *Handler) handlePut(w http.ResponseWriter, r *http.Request) (status int,
 	closeErr := f.Close()
 	// TODO(rost): Returning 405 Method Not Allowed might not be appropriate.
 	if copyErr != nil {
+		if e, ok := copyErr.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+			return http.StatusInsufficientStorage, copyErr
+		}
 		return http.StatusMethodNotAllowed, copyErr
 	}
 	if statErr != nil {
+		if e, ok := statErr.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+			return http.StatusInsufficientStorage, statErr
+		}
 		return http.StatusMethodNotAllowed, statErr
 	}
 	if closeErr != nil {
+		if e, ok := closeErr.(*os.PathError); ok && e.Err == syscall.ENOSPC {
+			return http.StatusInsufficientStorage, closeErr
+		}
 		return http.StatusMethodNotAllowed, closeErr
 	}
 	etag, err := findETag(h.FileSystem, h.LockSystem, reqPath, fi)
