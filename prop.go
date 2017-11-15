@@ -103,7 +103,8 @@ var liveProps = map[xml.Name]struct {
 	// it indicates a hidden property.
 	findFn func(FileSystem, LockSystem, string, os.FileInfo) (string, error)
 	// dir is true if the property applies to directories.
-	dir bool
+	dir         bool
+	isAvailable func(FileSystem, LockSystem, string, os.FileInfo) bool
 }{
 	xml.Name{Space: "DAV:", Local: "resourcetype"}: {
 		findFn: findResourceType,
@@ -156,6 +157,17 @@ var liveProps = map[xml.Name]struct {
 		findFn: findSupportedLock,
 		dir:    true,
 	},
+
+	xml.Name{Space: "DAV:", Local: "quota-used-bytes"}: {
+		findFn:      findQuotaUsedBytes,
+		dir:         true,
+		isAvailable: isQuotaUsedBytesAvailable,
+	},
+	xml.Name{Space: "DAV:", Local: "quota-available-bytes"}: {
+		findFn:      findQuotaAvailableBytes,
+		dir:         true,
+		isAvailable: isQuotaAvailableBytesAvailable,
+	},
 }
 
 // TODO(nigeltao) merge props and allprop?
@@ -194,6 +206,9 @@ func props(fs FileSystem, ls LockSystem, name string, pnames []xml.Name) ([]Prop
 		}
 		// Otherwise, it must either be a live property or we don't know it.
 		if prop := liveProps[pn]; prop.findFn != nil && (prop.dir || !isDir) {
+			if prop.isAvailable != nil && !prop.isAvailable(fs, ls, name, fi) {
+				continue
+			}
 			innerXML, err := prop.findFn(fs, ls, name, fi)
 			if err != nil {
 				return nil, err
@@ -235,6 +250,9 @@ func propnames(fs FileSystem, ls LockSystem, name string) ([]xml.Name, error) {
 	pnames := make([]xml.Name, 0, len(liveProps)+len(deadProps))
 	for pn, prop := range liveProps {
 		if prop.findFn != nil && (prop.dir || !isDir) {
+			if prop.isAvailable != nil && !prop.isAvailable(fs, ls, name, fi) {
+				continue
+			}
 			pnames = append(pnames, pn)
 		}
 	}
@@ -408,4 +426,44 @@ func findSupportedLock(fs FileSystem, ls LockSystem, name string, fi os.FileInfo
 		`<D:lockscope><D:exclusive/></D:lockscope>` +
 		`<D:locktype><D:write/></D:locktype>` +
 		`</D:lockentry>`, nil
+}
+
+func isQuotaUsedBytesAvailable(fs FileSystem, ls LockSystem, name string, fi os.FileInfo) bool {
+	if fiq, ok := fi.(interface {
+		HasQuotaInfo() bool
+	}); ok {
+		return fiq.HasQuotaInfo()
+	}
+
+	return false
+}
+
+func findQuotaUsedBytes(fs FileSystem, ls LockSystem, name string, fi os.FileInfo) (string, error) {
+	if fiq, ok := fi.(interface {
+		QuotaUsedBytes() int64
+	}); ok {
+		return fmt.Sprintf("%d", fiq.QuotaUsedBytes()), nil
+	}
+
+	return "", fmt.Errorf("not found")
+}
+
+func isQuotaAvailableBytesAvailable(fs FileSystem, ls LockSystem, name string, fi os.FileInfo) bool {
+	if fiq, ok := fi.(interface {
+		HasQuotaInfo() bool
+	}); ok {
+		return fiq.HasQuotaInfo()
+	}
+
+	return false
+}
+
+func findQuotaAvailableBytes(fs FileSystem, ls LockSystem, name string, fi os.FileInfo) (string, error) {
+	if fiq, ok := fi.(interface {
+		QuotaAvailableBytes() int64
+	}); ok {
+		return fmt.Sprintf("%d", fiq.QuotaAvailableBytes()), nil
+	}
+
+	return "", fmt.Errorf("not found")
 }
