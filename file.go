@@ -651,50 +651,6 @@ func copyProps(dst, src File) error {
 //
 // See section 9.8.5 for when various HTTP status codes apply.
 func copyFiles(fs FileSystem, src, dst string, overwrite bool, depth int, recursion int) (status int, err error) {
-	if fsCpy, ok := fs.(interface {
-		CopyAll(string, string) error
-	}); ok {
-		created := false
-		if _, err := fs.Stat(dst); err != nil {
-			if os.IsNotExist(err) {
-				created = true
-			} else {
-				return http.StatusForbidden, err
-			}
-		} else {
-			if !overwrite {
-				return http.StatusPreconditionFailed, os.ErrExist
-			}
-			if err := fs.RemoveAll(dst); err != nil && !os.IsNotExist(err) {
-				return http.StatusForbidden, err
-			}
-		}
-
-		err := fsCpy.CopyAll(src, dst)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return http.StatusNotFound, err
-			} else if os.IsExist(err) {
-				return http.StatusPreconditionFailed, os.ErrExist
-			}
-
-			return http.StatusInternalServerError, err
-		}
-
-		if created {
-			return http.StatusCreated, nil
-		}
-		return http.StatusNoContent, nil
-	}
-
-	if recursion == 1000 {
-		return http.StatusInternalServerError, errRecursionTooDeep
-	}
-	recursion++
-
-	// TODO: section 9.8.3 says that "Note that an infinite-depth COPY of /A/
-	// into /A/B/ could lead to infinite recursion if not handled correctly."
-
 	srcFile, err := fs.OpenFile(src, os.O_RDONLY, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -728,47 +684,69 @@ func copyFiles(fs FileSystem, src, dst string, overwrite bool, depth int, recurs
 		}
 	}
 
-	if srcStat.IsDir() {
-		if err := fs.Mkdir(dst, srcPerm); err != nil {
-			return http.StatusForbidden, err
-		}
-		if depth == infiniteDepth {
-			children, err := srcFile.Readdir(-1)
-			if err != nil {
-				return http.StatusForbidden, err
-			}
-			for _, c := range children {
-				name := c.Name()
-				s := path.Join(src, name)
-				d := path.Join(dst, name)
-				cStatus, cErr := copyFiles(fs, s, d, overwrite, depth, recursion)
-				if cErr != nil {
-					// TODO: MultiStatus.
-					return cStatus, cErr
-				}
-			}
-		}
-
-	} else {
-		dstFile, err := fs.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, srcPerm)
+	if fsCpy, ok := fs.(interface {
+		CopyAll(string, string) error
+	}); ok {
+		err := fsCpy.CopyAll(src, dst)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return http.StatusConflict, err
+				return http.StatusNotFound, err
+			} else if os.IsExist(err) {
+				return http.StatusPreconditionFailed, os.ErrExist
 			}
-			return http.StatusForbidden, err
 
+			return http.StatusInternalServerError, err
 		}
-		_, copyErr := io.Copy(dstFile, srcFile)
-		propsErr := copyProps(dstFile, srcFile)
-		closeErr := dstFile.Close()
-		if copyErr != nil {
-			return http.StatusInternalServerError, copyErr
+	} else {
+		if recursion == 1000 {
+			return http.StatusInternalServerError, errRecursionTooDeep
 		}
-		if propsErr != nil {
-			return http.StatusInternalServerError, propsErr
-		}
-		if closeErr != nil {
-			return http.StatusInternalServerError, closeErr
+		recursion++
+
+		// TODO: section 9.8.3 says that "Note that an infinite-depth COPY of /A/
+		// into /A/B/ could lead to infinite recursion if not handled correctly."
+		if srcStat.IsDir() {
+			if err := fs.Mkdir(dst, srcPerm); err != nil {
+				return http.StatusForbidden, err
+			}
+			if depth == infiniteDepth {
+				children, err := srcFile.Readdir(-1)
+				if err != nil {
+					return http.StatusForbidden, err
+				}
+				for _, c := range children {
+					name := c.Name()
+					s := path.Join(src, name)
+					d := path.Join(dst, name)
+					cStatus, cErr := copyFiles(fs, s, d, overwrite, depth, recursion)
+					if cErr != nil {
+						// TODO: MultiStatus.
+						return cStatus, cErr
+					}
+				}
+			}
+
+		} else {
+			dstFile, err := fs.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, srcPerm)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return http.StatusConflict, err
+				}
+				return http.StatusForbidden, err
+
+			}
+			_, copyErr := io.Copy(dstFile, srcFile)
+			propsErr := copyProps(dstFile, srcFile)
+			closeErr := dstFile.Close()
+			if copyErr != nil {
+				return http.StatusInternalServerError, copyErr
+			}
+			if propsErr != nil {
+				return http.StatusInternalServerError, propsErr
+			}
+			if closeErr != nil {
+				return http.StatusInternalServerError, closeErr
+			}
 		}
 	}
 
