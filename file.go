@@ -654,6 +654,22 @@ func copyFiles(fs FileSystem, src, dst string, overwrite bool, depth int, recurs
 	if fsCpy, ok := fs.(interface {
 		CopyAll(string, string) error
 	}); ok {
+		created := false
+		if _, err := fs.Stat(dst); err != nil {
+			if os.IsNotExist(err) {
+				created = true
+			} else {
+				return http.StatusForbidden, err
+			}
+		} else {
+			if !overwrite {
+				return http.StatusPreconditionFailed, os.ErrExist
+			}
+			if err := fs.RemoveAll(dst); err != nil && !os.IsNotExist(err) {
+				return http.StatusForbidden, err
+			}
+		}
+
 		err := fsCpy.CopyAll(src, dst)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -665,7 +681,10 @@ func copyFiles(fs FileSystem, src, dst string, overwrite bool, depth int, recurs
 			return http.StatusInternalServerError, err
 		}
 
-		return http.StatusCreated, nil
+		if created {
+			return http.StatusCreated, nil
+		}
+		return http.StatusNoContent, nil
 	}
 
 	if recursion == 1000 {
