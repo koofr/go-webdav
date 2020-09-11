@@ -385,12 +385,17 @@ func (h *Handler) handleCopyMove(w http.ResponseWriter, r *http.Request) (status
 	// Section 9.9.2 says that "The MOVE method on a collection must act as if
 	// a "Depth: infinity" header was used on it. A client must not submit a
 	// Depth header on a MOVE on a collection with any value but "infinity"."
+	//
+	// Yeah, but this section deals with a *collection* resources only. On a
+	// non-collection resource, Depth of whatever is perfectly valid and is ignored.
+	depth := infiniteDepth
 	if hdr := r.Header.Get("Depth"); hdr != "" {
-		if parseDepth(hdr) != infiniteDepth {
+		depth = parseDepth(hdr)
+		if depth == invalidDepth {
 			return http.StatusBadRequest, errInvalidDepth
 		}
 	}
-	return moveFiles(h.FileSystem, src, dst, r.Header.Get("Overwrite") != "F")
+	return moveFiles(h.FileSystem, src, dst, r.Header.Get("Overwrite") != "F", depth)
 }
 
 func (h *Handler) handleLock(w http.ResponseWriter, r *http.Request) (retStatus int, retErr error) {

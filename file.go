@@ -599,7 +599,18 @@ func (f *memFile) Write(p []byte) (int, error) {
 // moveFiles moves files and/or directories from src to dst.
 //
 // See section 9.9.4 for when various HTTP status codes apply.
-func moveFiles(fs FileSystem, src, dst string, overwrite bool) (status int, err error) {
+func moveFiles(fs FileSystem, src, dst string, overwrite bool, depth int) (status int, err error) {
+	stat, err := fs.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return http.StatusNotFound, err
+		}
+		return http.StatusForbidden, err
+	}
+	if stat.IsDir() && depth != infiniteDepth {
+		return http.StatusPreconditionFailed, errInvalidDepth
+	}
+
 	created := false
 	if _, err := fs.Stat(dst); err != nil {
 		if !os.IsNotExist(err) {
