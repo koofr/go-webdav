@@ -207,6 +207,10 @@ func (h *Handler) handleGetHeadPost(w http.ResponseWriter, r *http.Request) (sta
 		return http.StatusNotFound, err
 	}
 	if fi.IsDir() {
+		if isRequestOpenXchangeWebDavClient(r) {
+			w.WriteHeader(http.StatusOK)
+			return 0, nil
+		}
 		return http.StatusMethodNotAllowed, nil
 	}
 	etag, err := findETag(h.FileSystem, h.LockSystem, reqPath, fi)
@@ -515,6 +519,8 @@ func (h *Handler) handleUnlock(w http.ResponseWriter, r *http.Request) (status i
 }
 
 func (h *Handler) handlePropfind(w http.ResponseWriter, r *http.Request) (status int, err error) {
+	hasTrailingSlash := strings.HasSuffix(r.URL.Path, "/")
+	isOpenXchangeWebDavClient := hasTrailingSlash && isRequestOpenXchangeWebDavClient(r)
 	reqPath, status, err := h.stripPrefix(r.URL.Path)
 	if err != nil {
 		return status, err
@@ -563,7 +569,12 @@ func (h *Handler) handlePropfind(w http.ResponseWriter, r *http.Request) (status
 		if err != nil {
 			return err
 		}
-		return mw.write(makePropstatResponse(path.Join(h.Prefix, reqPath), pstats))
+		href := path.Join(h.Prefix, reqPath)
+		if isOpenXchangeWebDavClient && hasTrailingSlash && info.IsDir() && !strings.HasSuffix(href, "/") {
+			// fix for Open-Xchange WebDAV client
+			href += "/"
+		}
+		return mw.write(makePropstatResponse(href, pstats))
 	}
 
 	walkErr := walkFS(h.FileSystem, depth, reqPath, fi, walkFn)
@@ -705,3 +716,7 @@ var (
 	errUnsupportedLockInfo     = errors.New("webdav: unsupported lock info")
 	errUnsupportedMethod       = errors.New("webdav: unsupported method")
 )
+
+func isRequestOpenXchangeWebDavClient(r *http.Request) bool {
+	return r.Header.Get("User-Agent") == "Open-Xchange WebDAV client"
+}
