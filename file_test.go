@@ -468,7 +468,7 @@ func testFS(t *testing.T, fs FileSystem) {
 			case "mk-dir":
 				opErr = fs.Mkdir(parts[0], 0777)
 			case "move__":
-				_, opErr = moveFiles(fs, parts[1], parts[2], parts[0] == "o=T")
+				_, opErr = moveFiles(fs, parts[1], parts[2], parts[0] == "o=T", -1)
 			case "rm-all":
 				opErr = fs.RemoveAll(parts[0])
 			case "stat":
@@ -904,7 +904,7 @@ func TestCopyMoveProps(t *testing.T) {
 	if _, err := copyFiles(fs, "/src", "/tmp", true, infiniteDepth, 0); err != nil {
 		t.Fatalf("copyFiles /src /tmp: %v", err)
 	}
-	if _, err := moveFiles(fs, "/tmp", "/dst", true); err != nil {
+	if _, err := moveFiles(fs, "/tmp", "/dst", true, -1); err != nil {
 		t.Fatalf("moveFiles /tmp /dst: %v", err)
 	}
 	if err := patch("/src", Proppatch{Props: []Property{p0}, Remove: true}); err != nil {
